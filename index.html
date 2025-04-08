@@ -1,7 +1,84 @@
 <h1>Welcome to my new game site. This is still the beta phase. Updates will come later.</h1>
+<style>
+  .search-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: #222;
+    padding: 10px;
+    display: flex;
+    gap: 10px;
+    box-shadow: 0 -2px 5px rgba(0,0,0,0.3);
+    z-index: 9999;
+  }
+
+  .search-bar input {
+    flex: 1;
+    padding: 8px;
+    font-size: 16px;
+    border: none;
+    border-radius: 4px;
+  }
+
+  .search-bar button {
+    padding: 8px 16px;
+    background: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  mark {
+    background: yellow;
+  }
+</style>
+
+<div class="search-bar">
+  <input type="text" id="searchInput" placeholder="Search this page...">
+  <button onclick="findText()">Search</button>
+</div>
+
+<script>
+  function findText() {
+    // Clear previous highlights
+    const marks = document.querySelectorAll("mark");
+    marks.forEach(m => {
+      const parent = m.parentNode;
+      parent.replaceChild(document.createTextNode(m.textContent), m);
+      parent.normalize();
+    });
+
+    const term = document.getElementById("searchInput").value.trim().toLowerCase();
+    if (!term) return;
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const index = node.textContent.toLowerCase().indexOf(term);
+      if (index !== -1 && !node.parentElement.closest('.search-bar')) {
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + term.length);
+
+        const mark = document.createElement("mark");
+        range.surroundContents(mark);
+      }
+    }
+  }
+
+  document.getElementById("searchInput").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") findText();
+  });
+</script>
 <div></div>
 <a href="1v1-lol">1v1.LOL</a>
 <div></div>
 <a href="sm64/f.html">Super Mario 64</a>
 <div></div>
 <a href="https://tws2401.github.io/Sonic-CD-WASM/">Sonic CD</a>
+<div></div>
+<a href="https://funny-shooter.iwhy.dev/index.html">Funny Shooter 2</a>
+<div></div>
