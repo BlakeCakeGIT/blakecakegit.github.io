@@ -47,7 +47,7 @@
 
 <div id="clicking" class="tab" style="display:block;">
   <h2>Click to Earn Coins</h2>
-  <button onclick="earnCoins()">+5 Coins</button>
+  <button onclick="earnCoins()">+1 Coin</button>
 </div>
 
 <div id="case" class="tab">
@@ -140,7 +140,7 @@ function openTab(tab){
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
   document.querySelector(`.tabs button[onclick="openTab('${tab}')"]`).classList.add("active");
 }
-function earnCoins(){ coins+=5; updateUI(); }
+function earnCoins(){ coins+=1; updateUI(); }
 function rollRarity(pool){
   if(!pool) pool=rarities;
   let total=pool.reduce((a,b)=>a+b.chance,0);
