@@ -9,7 +9,7 @@
   .tabs button { margin:5px; padding:10px 20px; border:none; border-radius:8px; cursor:pointer; background:#444; color:white; }
   .tabs button.active { background:#666; }
   .tab { display:none; padding:20px; }
-  .inventory-item { border-radius:8px; margin:5px; padding:10px; display:flex; justify-content:space-between; align-items:center; }
+  .inventory-item { border-radius:8px; margin:5px; padding:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
   .inventory-item button { background:#222; color:white; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; }
   .common { background:green; } .rare { background:blue; } .epic { background:purple; } .unique { background:gold; color:black; } .legendary { background:red; } .mythical { background:pink; color:black; }
   .roller-container { position:relative; overflow:hidden; width:600px; margin:20px auto; height:120px; border:3px solid white; border-radius:12px; background:#222; }
@@ -19,12 +19,10 @@
   .case-lid { position:absolute; left:0; right:0; height:50%; background:#111; z-index:5; transition: transform 0.6s ease-in-out; }
   .lid-top { top:0; transform:translateY(-100%); } .lid-bottom { bottom:0; transform:translateY(100%); }
   .closed .lid-top { transform:translateY(0); } .closed .lid-bottom { transform:translateY(0); }
-  /* Redeem box */
   #redeem-box { position:fixed; bottom:20px; right:20px; background:#333; padding:10px; border-radius:10px; display:flex; gap:5px; align-items:center; }
   #redeem-box input { padding:5px; border:none; border-radius:6px; }
   #redeem-box button { padding:5px 10px; border:none; border-radius:6px; background:#555; color:white; cursor:pointer; }
   #openRedeemBtn { display:none; position:fixed; bottom:20px; right:20px; padding:5px 10px; border:none; border-radius:6px; background:#555; color:white; cursor:pointer; transition: all 0.4s ease; }
-  /* PANEL1129 */
   #panel1129 { display:none; position:fixed; top:50px; left:50px; width:300px; background:#333; color:white; padding:10px; border-radius:10px; z-index:1000; cursor:move; transition: all 0.4s ease; }
   #panel1129 input { width:100%; margin-bottom:5px; padding:5px; border-radius:5px; border:none; }
   #panel1129 button { padding:7px; border:none; border-radius:5px; cursor:pointer; }
@@ -43,11 +41,12 @@
   <button onclick="openTab('case')">Case Opening</button>
   <button onclick="openTab('premium')">Premium Case</button>
   <button onclick="openTab('inventory')">Inventory</button>
+  <button onclick="openTab('fuse')">Fuse</button>
 </div>
 
 <div id="clicking" class="tab" style="display:block;">
   <h2>Click to Earn Coins</h2>
-  <button onclick="earnCoins()">+1 Coin</button>
+  <button onclick="earnCoins()">+5 Coins</button>
 </div>
 
 <div id="case" class="tab">
@@ -77,6 +76,15 @@
   <div id="inventory-list"></div>
 </div>
 
+<!-- Fuse Tab -->
+<div id="fuse" class="tab">
+  <h2>Item Fusion</h2>
+  <p>Select 5 items of the same rarity to craft the next one!</p>
+  <div id="fuse-instructions">Click items to select them (5 needed)</div>
+  <div id="fuse-inventory"></div>
+  <button onclick="performFusion()">Fuse Selected Items</button>
+</div>
+
 <!-- Redeem Box -->
 <div id="redeem-box">
   <input type="text" id="redeem-input" placeholder="Enter code">
@@ -102,17 +110,22 @@
 <script>
 let coins = 500;
 let inventory = [];
+let selectedForFusion = [];
 
+// Rarities
 const rarities = [
   {name:"Common", color:"common", value:150, chance:50},
   {name:"Rare", color:"rare", value:750, chance:30},
   {name:"Epic", color:"epic", value:2000, chance:10},
   {name:"Unique", color:"unique", value:5000, chance:5},
   {name:"Legendary", color:"legendary", value:20000, chance:3},
-  {name:"Mythical", color:"mythical", value:1000000, chance:2},
+  {name:"Mythical", color:"mythical", value:100000, chance:2},
 ];
 const premiumRarities = rarities.filter(r=>r.value>=2000);
+const rarityOrder = ["Common","Rare","Epic","Unique","Legendary","Mythical"];
+const secretItem = { name: "Secret Item", color:"mythical", value:100000000 };
 
+// Load/Save
 function loadGame(){
   const savedCoins = localStorage.getItem("coins");
   const savedInventory = localStorage.getItem("inventory");
@@ -121,6 +134,8 @@ function loadGame(){
   updateUI();
 }
 function saveGame(){ localStorage.setItem("coins",coins); localStorage.setItem("inventory",JSON.stringify(inventory)); }
+
+// UI updates
 function updateUI(){
   document.getElementById("coins").innerText=coins;
   const invList=document.getElementById("inventory-list");
@@ -132,153 +147,87 @@ function updateUI(){
                    <button onclick="sellItem(${index})">Sell</button>`;
     invList.appendChild(div);
   });
+  updateFuseInventory();
   saveGame();
 }
+
+// Tabs
 function openTab(tab){
   document.querySelectorAll(".tab").forEach(t=>t.style.display="none");
   document.getElementById(tab).style.display="block";
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
   document.querySelector(`.tabs button[onclick="openTab('${tab}')"]`).classList.add("active");
 }
-function earnCoins(){ coins+=1; updateUI(); }
-function rollRarity(pool){
-  if(!pool) pool=rarities;
-  let total=pool.reduce((a,b)=>a+b.chance,0);
-  let r=Math.random()*total, c=0;
-  for(let i of pool){ c+=i.chance; if(r<=c) return i; }
-  return pool[0];
-}
-function startCase(){
-  if(coins<500){ alert("Not enough coins!"); return; }
-  coins-=500; updateUI();
-  const container=document.getElementById("roller-container");
-  container.classList.add("closed");
-  setTimeout(()=>{ openCase(); setTimeout(()=>container.classList.remove("closed"),300); },600);
-}
-function openCase(){
-  const roller=document.getElementById("roller"); roller.innerHTML="";
-  let items=[];
-  for(let i=0;i<100;i++){ let r=rollRarity(); items.push(r); const div=document.createElement("div"); div.className=`roller-item ${r.color}`; div.innerText=r.name; roller.appendChild(div);}
-  animateRoll(roller, items);
-}
-function startPremiumCase(){
-  if(coins<100000){ alert("Not enough coins!"); return; }
-  coins-=100000; updateUI();
-  const container=document.getElementById("premium-roller-container");
-  container.classList.add("closed");
-  setTimeout(()=>{ openPremiumCase(); setTimeout(()=>container.classList.remove("closed"),300); },600);
-}
-function openPremiumCase(){
-  const roller=document.getElementById("premium-roller"); roller.innerHTML="";
-  let items=[];
-  for(let i=0;i<100;i++){ let r=premiumRarities[Math.floor(Math.random()*premiumRarities.length)]; items.push(r); const div=document.createElement("div"); div.className=`roller-item ${r.color}`; div.innerText=r.name; roller.appendChild(div);}
-  animateRoll(roller, items);
-}
-function animateRoll(roller, items){
-  let pos=0, speed=60, totalScroll=0, stopAt=2500+Math.random()*1000;
-  function animate(){
-    if(totalScroll<stopAt){
-      pos-=speed; totalScroll+=speed; roller.style.transform=`translateX(${pos}px)`;
-      if(totalScroll<stopAt*0.5) speed*=0.97; else speed*=0.985; speed=Math.max(6,speed);
-      requestAnimationFrame(animate);
-    } else {
-      let containerCenter=300, itemIndex=Math.floor((totalScroll+containerCenter)/140);
-      let landed=items[itemIndex]||items[items.length-1];
-      inventory.push(landed); updateUI();
-    }
-  } animate();
-}
+
+// Clicking
+function earnCoins(){ coins+=5; updateUI(); }
+
+// Case rolling
+function rollRarity(pool){ pool=pool||rarities; let total=pool.reduce((a,b)=>a+b.chance,0); let r=Math.random()*total, c=0; for(let i of pool){ c+=i.chance; if(r<=c) return i;} return pool[0];}
+function startCase(){ if(coins<500){ alert("Not enough coins!"); return; } coins-=500; updateUI(); const container=document.getElementById("roller-container"); container.classList.add("closed"); setTimeout(()=>{ openCase(); setTimeout(()=>container.classList.remove("closed"),300); },600);}
+function openCase(){ const roller=document.getElementById("roller"); roller.innerHTML=""; let items=[]; for(let i=0;i<100;i++){ let r=rollRarity(); items.push(r); const div=document.createElement("div"); div.className=`roller-item ${r.color}`; div.innerText=r.name; roller.appendChild(div);} animateRoll(roller,items);}
+function startPremiumCase(){ if(coins<100000){ alert("Not enough coins!"); return; } coins-=100000; updateUI(); const container=document.getElementById("premium-roller-container"); container.classList.add("closed"); setTimeout(()=>{ openPremiumCase(); setTimeout(()=>container.classList.remove("closed"),300); },600);}
+function openPremiumCase(){ const roller=document.getElementById("premium-roller"); roller.innerHTML=""; let items=[]; for(let i=0;i<100;i++){ let r=premiumRarities[Math.floor(Math.random()*premiumRarities.length)]; items.push(r); const div=document.createElement("div"); div.className=`roller-item ${r.color}`; div.innerText=r.name; roller.appendChild(div);} animateRoll(roller,items);}
+function animateRoll(roller, items){ let pos=0, speed=60, totalScroll=0, stopAt=2500+Math.random()*1000; function animate(){ if(totalScroll<stopAt){ pos-=speed; totalScroll+=speed; roller.style.transform=`translateX(${pos}px)`; if(totalScroll<stopAt*0.5) speed*=0.97; else speed*=0.985; speed=Math.max(6,speed); requestAnimationFrame(animate);} else{ let containerCenter=300, itemIndex=Math.floor((totalScroll+containerCenter)/140); let landed=items[itemIndex]||items[items.length-1]; inventory.push(landed); updateUI(); } } animate();}
+
+// Inventory
 function sellItem(index){ coins+=inventory[index].value; inventory.splice(index,1); updateUI(); }
 
-// Redeem code with negative subtraction
-function redeemCode(){
-  const input=document.getElementById("redeem-input");
-  const val=input.value.trim();
-  if(val==="B4487"){
-    let amount=prompt("How many coins would you like to add/subtract? (Use negative to subtract)");
-    amount=parseInt(amount);
-    if(!isNaN(amount)){
-      coins += amount;
-      if(coins<0) coins=0;
-      updateUI();
-      alert(`${amount>=0?'Added':'Subtracted'} ${Math.abs(amount)} coins!`);
-    } else{
-      alert("Invalid amount!");
-    }
-  } else if(val==="PANEL1129"){
-    document.getElementById("panel1129").style.display="block";
-  } else{
-    alert("Invalid code!");
-  }
-  input.value="";
+// Fuse Tab - selectable
+function updateFuseInventory(){
+  const fuseInv=document.getElementById("fuse-inventory");
+  fuseInv.innerHTML="";
+  inventory.forEach((item,index)=>{
+    const div=document.createElement("div");
+    div.className=`inventory-item ${item.color}`;
+    div.innerText=`${item.name}`;
+    if(selectedForFusion.includes(index)) div.style.border="2px solid yellow";
+    div.onclick=()=>{ toggleSelect(index); };
+    fuseInv.appendChild(div);
+  });
+}
+function toggleSelect(index){
+  if(selectedForFusion.includes(index)) selectedForFusion=selectedForFusion.filter(i=>i!==index);
+  else selectedForFusion.push(index);
+  updateFuseInventory();
+}
+function performFusion(){
+  if(selectedForFusion.length!==5){ alert("Select exactly 5 items to fuse!"); return; }
+  const rarity=inventory[selectedForFusion[0]].name;
+  if(!selectedForFusion.every(i=>inventory[i].name===rarity)){ alert("All selected items must be the same rarity!"); return; }
+  selectedForFusion.sort((a,b)=>b-a); // remove from end
+  for(let i of selectedForFusion) inventory.splice(i,1);
+  let newItem;
+  if(rarity==="Mythical") newItem=secretItem;
+  else { const nextRarity=rarityOrder[rarityOrder.indexOf(rarity)+1]; newItem=rarities.find(r=>r.name===nextRarity); }
+  inventory.push(newItem);
+  alert(`Fused 5 ${rarity} into 1 ${newItem.name}!`);
+  selectedForFusion=[];
+  updateUI();
 }
 
-// Redeem box minimize/open logic
-const redeemBox = document.getElementById("redeem-box");
-const redeemMinBtn = document.getElementById("redeemMinimizeBtn");
-const openRedeemBtn = document.getElementById("openRedeemBtn");
+// Redeem box
+function redeemCode(){ const input=document.getElementById("redeem-input"); const val=input.value.trim(); if(val==="B4487"){ let amount=prompt("How many coins would you like to add/subtract?"); amount=parseInt(amount); if(!isNaN(amount)){ coins+=amount; if(coins<0) coins=0; updateUI(); alert(`${amount>=0?'Added':'Subtracted'} ${Math.abs(amount)} coins!`);}else{alert("Invalid amount!");}} else if(val==="PANEL1129"){ document.getElementById("panel1129").style.display="block"; } else{ alert("Invalid code!");} input.value=""; }
 
-redeemMinBtn.addEventListener("click", () => {
-  redeemBox.style.transform = "scale(0)";
-  redeemBox.style.opacity = "0";
-  setTimeout(() => {
-    redeemBox.style.display = "none";
-    openRedeemBtn.style.display = "block";
-    openRedeemBtn.style.transform = "scale(0)";
-    openRedeemBtn.style.opacity = "0";
-    setTimeout(() => {
-      openRedeemBtn.style.transform = "scale(1)";
-      openRedeemBtn.style.opacity = "1";
-    }, 10);
-  }, 300);
-});
+// Redeem minimize/open
+const redeemBox=document.getElementById("redeem-box");
+const redeemMinBtn=document.getElementById("redeemMinimizeBtn");
+const openRedeemBtn=document.getElementById("openRedeemBtn");
+redeemMinBtn.addEventListener("click",()=>{ redeemBox.style.transform="scale(0)"; redeemBox.style.opacity="0"; setTimeout(()=>{ redeemBox.style.display="none"; openRedeemBtn.style.display="block"; openRedeemBtn.style.transform="scale(0)"; openRedeemBtn.style.opacity="0"; setTimeout(()=>{openRedeemBtn.style.transform="scale(1)"; openRedeemBtn.style.opacity="1";},10);},300);});
+openRedeemBtn.addEventListener("click",()=>{ openRedeemBtn.style.transform="scale(0)"; openRedeemBtn.style.opacity="0"; setTimeout(()=>{ openRedeemBtn.style.display="none"; redeemBox.style.display="flex"; redeemBox.style.transform="scale(0)"; redeemBox.style.opacity="0"; setTimeout(()=>{ redeemBox.style.transform="scale(1)"; redeemBox.style.opacity="1";},10);},300);});
 
-openRedeemBtn.addEventListener("click", () => {
-  openRedeemBtn.style.transform = "scale(0)";
-  openRedeemBtn.style.opacity = "0";
-  setTimeout(() => {
-    openRedeemBtn.style.display = "none";
-    redeemBox.style.display = "flex";
-    redeemBox.style.transform = "scale(0)";
-    redeemBox.style.opacity = "0";
-    setTimeout(() => {
-      redeemBox.style.transform = "scale(1)";
-      redeemBox.style.opacity = "1";
-    }, 10);
-  }, 300);
-});
-
-// PANEL1129 logic
+// PANEL1129
 const panel=document.getElementById("panel1129");
 const openBtn=document.getElementById("openPanelBtn");
 const minimizeBtn=document.getElementById("minimizeBtn");
 const giveBtn=document.getElementById("giveCoinsBtn");
-let offsetX, offsetY, isDragging=false;
-panel.addEventListener("mousedown",(e)=>{ if(e.target!==minimizeBtn){ isDragging=true; offsetX=e.clientX-panel.offsetLeft; offsetY=e.clientY-panel.offsetTop; }});
-document.addEventListener("mousemove",(e)=>{ if(isDragging){ panel.style.left=e.clientX-offsetX+"px"; panel.style.top=e.clientY-offsetY+"px"; }});
-document.addEventListener("mouseup",()=>{ isDragging=false; });
-minimizeBtn.addEventListener("click",()=>{
-  panel.style.transform="scale(0)"; panel.style.opacity="0";
-  setTimeout(()=>{
-    panel.style.display="none";
-    openBtn.style.display="block";
-    openBtn.style.transform="scale(0)"; openBtn.style.opacity="0";
-    setTimeout(()=>{ openBtn.style.transform="scale(1)"; openBtn.style.opacity="1"; },10);
-  },400);
-});
-openBtn.addEventListener("click",()=>{
-  openBtn.style.transform="scale(0)"; openBtn.style.opacity="0";
-  setTimeout(()=>{
-    openBtn.style.display="none";
-    panel.style.display="block"; panel.style.transform="scale(0)"; panel.style.opacity="0";
-    setTimeout(()=>{ panel.style.transform="scale(1)"; panel.style.opacity="1"; },10);
-  },400);
-});
-giveBtn.addEventListener("click",()=>{
-  let amount=parseInt(document.getElementById("panelAmount").value);
-  if(!isNaN(amount)&&amount>0){ coins+=amount; updateUI(); alert(`Added ${amount} coins!`); document.getElementById("panelAmount").value=""; }
-  else{ alert("Enter a valid amount!"); }
-});
+let offsetX,offsetY,isDragging=false;
+panel.addEventListener("mousedown",(e)=>{if(e.target!==minimizeBtn){isDragging=true;offsetX=e.clientX-panel.offsetLeft;offsetY=e.clientY-panel.offsetTop;}});
+document.addEventListener("mousemove",(e)=>{if(isDragging){panel.style.left=e.clientX-offsetX+"px";panel.style.top=e.clientY-offsetY+"px";}});
+document.addEventListener("mouseup",()=>{isDragging=false;});
+minimizeBtn.addEventListener("click",()=>{panel.style.transform="scale(0)"; panel.style.opacity="0"; setTimeout(()=>{ panel.style.display="none"; openBtn.style.display="block"; openBtn.style.transform="scale(0)"; openBtn.style.opacity="0"; setTimeout(()=>{ openBtn.style.transform="scale(1)"; openBtn.style.opacity="1"; },10);},400);});
+openBtn.addEventListener("click",()=>{ openBtn.style.transform="scale(0)"; openBtn.style.opacity="0"; setTimeout(()=>{ openBtn.style.display="none"; panel.style.display="block"; panel.style.transform="scale(0)"; panel.style.opacity="0"; setTimeout(()=>{ panel.style.transform="scale(1)"; panel.style.opacity="1";},10);},400);});
+giveBtn.addEventListener("click",()=>{ let amount=parseInt(document.getElementById("panelAmount").value); if(!isNaN(amount)&&amount>0){ coins+=amount; updateUI(); alert(`Added ${amount} coins!`); document.getElementById("panelAmount").value="";} else{alert("Enter a valid amount!");}});
 
 loadGame();
 </script>
